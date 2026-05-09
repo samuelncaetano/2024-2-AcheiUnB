@@ -1,0 +1,60 @@
+name: OWASP ZAP Security Audit
+
+on:
+  # Permite executar o workflow manualmente através da aba "Actions"
+  workflow_dispatch:
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+    name: Full Scan via Front-end
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. Sobe o Back-end em segundo plano usando Docker Compose
+      - name: Iniciar o Back-end (API)
+        run: |
+          cd API/
+          docker compose up -d
+
+      # 2. Prepara o ambiente Node.js para rodar o Front-end Vue.js
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20" # Versão LTS recomendada do Node
+
+      # 3. Instala as dependências e roda o Front-end em segundo plano (com o '&')
+      - name: Iniciar o Front-end (Vue)
+        run: |
+          cd web/
+          npm install
+          npm run dev &
+
+      # 4. Aguarda de forma inteligente até que as portas 8000 (API) e 5173 (Vue) respondam
+      - name: Aguardar os serviços ficarem online
+        run: npx wait-on -t 60000 http://localhost:8000 http://localhost:5173
+        # O wait-on tenta acessar as URLs por até 60 segundos antes de dar erro
+
+      # 5. Executa a auditoria completa (Full Scan) apontando para o Vue.js
+      - name: OWASP ZAP Full Scan Ativo
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: "http://localhost:5173"
+          # A flag '-a' força o ZAP a usar o AJAX Spider, essencial para projetos Vue.js
+          # O AJAX Spider abre um navegador invisível, clica nos botões da interface
+          # e descobre as requisições que o front-end faz para a porta 8000.
+          cmd_options: "-a"
+          # Mude para 'true' no futuro se quiser que a action falhe se achar vulnerabilidades graves
+          fail_action: false
+
+      # 6. Salva os relatórios gerados em HTML e Markdown
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ZAP-Security-Report
+          path: |
+            *report_html.html
+            *report_md.md
