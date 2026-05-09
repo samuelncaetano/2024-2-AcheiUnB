@@ -69,6 +69,7 @@ jobs:
           target: "http://localhost:5173"
           cmd_options: "-a"
           fail_action: false
+          allow_issue_writing: false
 
       # 7. Salva os relatórios gerados em HTML e Markdown
       - name: Upload ZAP Report
